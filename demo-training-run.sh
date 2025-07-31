@@ -65,7 +65,7 @@ python train.py \
  --epoch_count 999999 \
  --epoch_save $EPOCH_SAVE \
  --grad_cp $GRAD_CP \
- --head_size 64 \
+ --head_size 32 \
  --load_model "0" \
  --lr_final $LR_FINAL \
  --lr_init $LR_INIT \
