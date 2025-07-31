@@ -14,8 +14,8 @@
 #
 MODEL_TYPE="x070" # x060 => rwkv-6.0
 #
-N_LAYER="16"
-N_EMBD="512"
+N_LAYER="24"
+N_EMBD="384"
 #
 CTX_LEN="4096" # !!! change magic_prime if you change ctx_len !!!
 PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
