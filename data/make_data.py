@@ -190,7 +190,7 @@ for idx in TODO:
     else:
         print(tokenizer.decode(dix))
 
-print(f"{'--'*40}\n### Final {OUT_NAME}.bin/idx has {data_size} tokens, {data_len} items. Dtype {data._index.dtype}")
+print(f"{'-'*80}\n### Final {OUT_NAME}.bin/idx has {data_size} tokens, {data_len} items. Dtype {data._index.dtype}")
 
 if data_size >= CTX_LEN * 3:
     n_chunk = int(data_size // CTX_LEN) - 1
