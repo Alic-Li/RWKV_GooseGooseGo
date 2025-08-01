@@ -58,6 +58,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 1 \
- --vocab_size 363 \
+ --vocab_size 364 \
  --warmup_steps 10 \
  --weight_decay 0 \

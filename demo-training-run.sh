@@ -49,7 +49,7 @@ DATA_FILE="data/dataset_cleaned"
 DATA_TYPE="binidx"
 #
 python train.py \
- --wandb "" \
+ --wandb "RWKV_Goose_Go" \
  --accelerator gpu \
  --adam_eps 1e-18 \
  --beta1 0.9 \
@@ -80,6 +80,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 3 \
- --vocab_size 363 \
+ --vocab_size 364 \
  --warmup_steps 10 \
  --weight_decay 0.001 \
