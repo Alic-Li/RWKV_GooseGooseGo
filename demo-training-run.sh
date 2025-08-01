@@ -14,7 +14,7 @@ MODEL_TYPE="x070" # x060 => rwkv-6.0
 N_LAYER="24"
 N_EMBD="384"
 #
-CTX_LEN="4096" # !!! change magic_prime if you change ctx_len !!!
+CTX_LEN="1024" # !!! change magic_prime if you change ctx_len !!!
 PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 #
 ################################################################################
@@ -41,9 +41,9 @@ GPU_PER_NODE=1 # number of GPUs per node
 #
 DS_BUCKET_MB=2 # set to 2 for consumer GPUs, set to 200 for A100 / H100 (affects speed & vram usage)
 #
-#--my_exit_tokens 3251777360 --magic_prime 793889 --ctx_len 4096
-MY_EXIT_TOKENS="3251777360"
-MAGIC_PRIME="793889"
+# --my_exit_tokens 1169866102 --magic_prime 1142423 --ctx_len 1024
+MY_EXIT_TOKENS="1169866102"
+MAGIC_PRIME="1142423"
 # DATA_FILE="data/pretrain_hq"
 DATA_FILE="data/datasets_final"
 DATA_TYPE="binidx"
@@ -80,6 +80,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 3 \
- --vocab_size 60 \
+ --vocab_size 402 \
  --warmup_steps 10 \
  --weight_decay 0.001 \

@@ -6,8 +6,8 @@ def generate_vocab():
         
         # 生成大小写字母组合 Aa 到 Tt
         # 第一个字母大写 A-T，第二个字母小写 a-t
-        first_letters = 'ABCDEFGHJKLMNOPQRST'  # 大写字母 A-T
-        second_letters = 'abcdefghjklmnopqrst'  # 小写字母 a-t
+        first_letters = 'ABCDEFGHIJKLMNOPQRST'  # 大写字母 A-T
+        second_letters = 'abcdefghijklmnopqrst'  # 小写字母 a-t
         index = 3  # 从索引3开始
         
         for first_char in first_letters:

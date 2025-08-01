@@ -13,7 +13,7 @@ def remove_suffix_from_jsonl(input_file, output_file):
             
             for suffix in suffixes:
                 if text.endswith(suffix):
-                    text = text[:-len(suffix)-1]
+                    text = text[:-len(suffix)]
                     break 
             
             data['text'] = text

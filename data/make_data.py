@@ -86,6 +86,10 @@ def add_raw(raw):
     if tokenizer.decode(out) != raw:
         print("ERROR" * 100)
         exit(0)
+        # print(f"\n!!!!!!!! tokenizer BAD CASE !!!!!!!!")
+        # print(f"Original text: {raw}")
+        # print(f"Decoded text: {tokenizer.decode(out)}")
+        # print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!")
     out.append(0)  # [0] = end_of_doc for rwkv tokenizer
     builder.add_item(np.array(out, dtype=np.uint16))
     builder.end_document()
@@ -141,6 +145,16 @@ with fileinput.input(TEMP_FILE, encoding="utf-8") as ffff:
     for line in ffff:
         x = json.loads(line)["text"]
         add_raw(x)
+    # for i, line in enumerate(ffff):
+    #     try:
+    #         x = json.loads(line)["text"]
+    #         add_raw(x)
+    #     except Exception as e:
+    #         print(f"\n!!!!!!!! json.loads BAD CASE !!!!!!!!")
+    #         print(f"Error processing line {i+1} in {TEMP_FILE}:")
+    #         print(f"Line content: {line.strip()}")
+    #         print(f"Error: {e}")
+    #         print(f"!!!!!!!!!!!!!!!!!!!!!!!!!!")
 builder.finalize((f"{OUT_NAME}.idx"))
 print("done")
 
@@ -176,7 +190,7 @@ for idx in TODO:
     else:
         print(tokenizer.decode(dix))
 
-print(f"{'-'*80}\n### Final {OUT_NAME}.bin/idx has {data_size} tokens, {data_len} items. Dtype {data._index.dtype}")
+print(f"{'--'*40}\n### Final {OUT_NAME}.bin/idx has {data_size} tokens, {data_len} items. Dtype {data._index.dtype}")
 
 if data_size >= CTX_LEN * 3:
     n_chunk = int(data_size // CTX_LEN) - 1

@@ -14,7 +14,7 @@ from tokenizer.rwkv_tokenizer import TRIE_TOKENIZER
 JSONL_FILE = 'output.jsonl'
 TOKENIZER_VOCAB_FILE = 'tokenizer/rwkv_Goose_Go_vocab.txt'
 OUTPUT_IMAGE_FILE = 'token_distribution.png'
-BINS = [128, 256, 512, 1024, 2048, 4096, 8192, 16384]
+BINS = [128, 256, 512, 1024, 2048, 4096]
 
 def analyze_distribution():
     """

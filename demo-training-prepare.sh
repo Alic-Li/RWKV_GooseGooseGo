@@ -17,7 +17,7 @@ MODEL_TYPE="x070" # x060 => rwkv-6.0
 N_LAYER="24"
 N_EMBD="384"
 #
-CTX_LEN="4096" # !!! change magic_prime if you change ctx_len !!!
+CTX_LEN="1024" # !!! change magic_prime if you change ctx_len !!!
 PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 #
 ################################################################################
@@ -58,6 +58,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 1 \
- --vocab_size 60 \
+ --vocab_size 402 \
  --warmup_steps 10 \
  --weight_decay 0 \
