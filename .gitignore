@@ -4,3 +4,6 @@ out/
 */__pycache__/*
 data/tokenizer/__pycache__/rwkv_tokenizer.cpython-312.pyc
 data/tokenizer/__pycache__/__init__.cpython-312.pyc
+data/go_pgn_string_leela_zero_train.jsonl
+data/go_pgn_string_v2_train.jsonl
+data/make_data_temp.jsonl
