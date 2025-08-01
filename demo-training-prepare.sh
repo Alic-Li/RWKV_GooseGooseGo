@@ -24,10 +24,10 @@ PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 #--wandb "RWKV_Goose_Go"
 # magic_prime = the largest 3n+2 prime smaller than datalen/ctxlen-1 (= 1498226207/512-1 = 2926222.06 in this case) = 2926181 in this case
 # use https://www.dcode.fr/prime-numbers-search
-#
-MY_EXIT_TOKENS="1169866102"
-MAGIC_PRIME="1142423"
-DATA_FILE="data/output"
+#--my_exit_tokens 875602734 --magic_prime 855059 --ctx_len 1024
+MY_EXIT_TOKENS="875602734"
+MAGIC_PRIME="855059"
+DATA_FILE="data/dataset_cleaned"
 DATA_TYPE="binidx"
 #
 python train.py \
@@ -58,6 +58,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 1 \
- --vocab_size 402 \
+ --vocab_size 363 \
  --warmup_steps 10 \
  --weight_decay 0 \

@@ -41,11 +41,11 @@ GPU_PER_NODE=1 # number of GPUs per node
 #
 DS_BUCKET_MB=2 # set to 2 for consumer GPUs, set to 200 for A100 / H100 (affects speed & vram usage)
 #
-# --my_exit_tokens 1169866102 --magic_prime 1142423 --ctx_len 1024
-MY_EXIT_TOKENS="1169866102"
-MAGIC_PRIME="1142423"
+# --my_exit_tokens 875602734 --magic_prime 855059 --ctx_len 1024
+MY_EXIT_TOKENS="875602734"
+MAGIC_PRIME="855059"
 # DATA_FILE="data/pretrain_hq"
-DATA_FILE="data/output"
+DATA_FILE="data/dataset_cleaned"
 DATA_TYPE="binidx"
 #
 python train.py \
@@ -80,6 +80,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 3 \
- --vocab_size 402 \
+ --vocab_size 363 \
  --warmup_steps 10 \
  --weight_decay 0.001 \

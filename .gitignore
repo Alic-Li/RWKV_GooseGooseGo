@@ -8,3 +8,6 @@ data/go_pgn_string_leela_zero_train.jsonl
 data/go_pgn_string_v2_train.jsonl
 data/make_data_temp.jsonl
 dataset_cleaned.jsonl
+wandb
+*.bin
+*.idx
