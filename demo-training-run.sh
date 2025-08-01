@@ -25,7 +25,7 @@ PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 # Larger model => use smaller LR
 # Finetuning => use very small LR, such as 1e-5
 #
-M_BSZ="1" # takes ~9G VRAM here => reduce this to save VRAM, increase this for faster speed
+M_BSZ="6" # takes ~9G VRAM here => reduce this to save VRAM, increase this for faster speed
 LR_INIT="4e-4"
 LR_FINAL="4e-6"
 GRAD_CP=0 # 1 => slower, save VRAM; 0 => faster, more VRAM
@@ -65,7 +65,7 @@ python train.py \
  --epoch_count 999999 \
  --epoch_save $EPOCH_SAVE \
  --grad_cp $GRAD_CP \
- --head_size 32 \
+ --head_size 64 \
  --load_model "0" \
  --lr_final $LR_FINAL \
  --lr_init $LR_INIT \

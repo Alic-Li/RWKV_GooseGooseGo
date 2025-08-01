@@ -1,0 +1,4 @@
+data/output.bin
+data/output.idx
+out/
+*/__pycache__/*

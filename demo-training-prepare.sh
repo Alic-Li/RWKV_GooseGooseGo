@@ -44,7 +44,7 @@ python train.py \
  --epoch_count 1 \
  --epoch_save 1 \
  --grad_cp 1 \
- --head_size 32 \
+ --head_size 64 \
  --lr_final 1e-5 \
  --lr_init 1e-5 \
  --magic_prime $MAGIC_PRIME \
