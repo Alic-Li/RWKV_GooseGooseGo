@@ -2,3 +2,5 @@ data/output.bin
 data/output.idx
 out/
 */__pycache__/*
+data/tokenizer/__pycache__/rwkv_tokenizer.cpython-312.pyc
+data/tokenizer/__pycache__/__init__.cpython-312.pyc
