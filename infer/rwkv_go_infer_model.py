@@ -27,10 +27,10 @@ args.MODEL_NAME = "out/L24-D384-x070/rwkv-6"
 
 STATE_NAME = None # use vanilla zero initial state?
 
-GEN_TEMP = 1.6
+GEN_TEMP = 1.2
 GEN_TOP_P = 0.8
-GEN_alpha_presence = 0.5
-GEN_alpha_frequency = 0.5
+GEN_alpha_presence = 0.8
+GEN_alpha_frequency = 0.8
 GEN_penalty_decay = 0.996
 
 CHUNK_LEN = 16  # split input into chunks to save VRAM (shorter -> slower, but saves VRAM)

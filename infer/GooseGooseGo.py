@@ -361,7 +361,7 @@ class GameUI:
     def run_ai_logic(self):
         with self.ai_lock:
             history_str = self.board.get_history_string()
-
+    
             # 如果是第一手棋，随机选择一个位置
             if not history_str:
                 print("AI is making a random first move.")
@@ -375,24 +375,27 @@ class GameUI:
                         break
             else:
                 # AI落子循环，直到找到有效位置
-                while True:
+                max_attempts = 5  # 设置最大尝试次数，防止无限循环
+                attempts = 0
+                
+                while attempts < max_attempts:
                     print(f"AI is thinking... History: '{history_str}'")
                     str = get_special_substr(history_str)
                     ai_move_notation = predict_go_move(str)
                     print(f"AI predicted move: '{ai_move_notation}'")
-
+    
                     # 纠正模型可能输出的无效字符 'I' 或 'i'
                     if ai_move_notation:
                         original_move = ai_move_notation
                         ai_move_notation = ai_move_notation.replace('I', 'J').replace('i', 'j')
                         if ai_move_notation != original_move:
                             print(f"已将AI落子从 '{original_move}' 修正为 '{ai_move_notation}'")
-
+    
                     if not ai_move_notation:
                         print("AI未能预测有效落子, 将重试。")
-                        # time.sleep(0.5)
+                        attempts += 1
                         continue
-
+                    
                     point = from_notation(ai_move_notation)
                     if point and self.board.is_valid_move(point[0], point[1], self.current_player):
                         x, y = point
@@ -401,13 +404,17 @@ class GameUI:
                         self.switch_player()
                         break # Found a valid move, exit loop.
                     else:
-                        # If the move is invalid (or '�'), treat it as a pass and end the turn.
-                        print(f"AI's predicted move '{ai_move_notation}' is invalid. Treating as a pass.")
-                        self.board.pass_turn()
-                        self.last_move = None
-                        self.switch_player()
-                        break # End turn, exit loop.
-
+                        # 如果落子无效，则增加尝试次数并重新预测
+                        print(f"AI's predicted move '{ai_move_notation}' is invalid. Retrying...")
+                        attempts += 1
+                        
+                # 如果超过最大尝试次数仍未找到有效落子，则pass
+                if attempts >= max_attempts:
+                    print("AI未能找到有效落子，将跳过回合。")
+                    self.board.pass_turn()
+                    self.last_move = None
+                    self.switch_player()
+    
             self.ai_is_thinking = False
             # 如果是AI vs AI模式，触发下一个AI
             if self.game_mode == MODE_AVA:
