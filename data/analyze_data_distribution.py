@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'tokenizer'))
 from tokenizer.rwkv_tokenizer import TRIE_TOKENIZER
 
 # --- Configuration ---
-JSONL_FILE = 'output.jsonl'
+JSONL_FILE = 'dataset_cleaned.jsonl'
 TOKENIZER_VOCAB_FILE = 'tokenizer/rwkv_Goose_Go_vocab.txt'
 OUTPUT_IMAGE_FILE = 'token_distribution.png'
 BINS = [128, 256, 512, 1024, 2048, 4096]
