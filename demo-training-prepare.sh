@@ -25,9 +25,9 @@ PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 # magic_prime = the largest 3n+2 prime smaller than datalen/ctxlen-1 (= 1498226207/512-1 = 2926222.06 in this case) = 2926181 in this case
 # use https://www.dcode.fr/prime-numbers-search
 #
-MY_EXIT_TOKENS="3251777360"
-MAGIC_PRIME="793889"
-DATA_FILE="data/datasets_final"
+MY_EXIT_TOKENS="1169866102"
+MAGIC_PRIME="1142423"
+DATA_FILE="data/output"
 DATA_TYPE="binidx"
 #
 python train.py \

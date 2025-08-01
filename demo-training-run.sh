@@ -45,7 +45,7 @@ DS_BUCKET_MB=2 # set to 2 for consumer GPUs, set to 200 for A100 / H100 (affects
 MY_EXIT_TOKENS="1169866102"
 MAGIC_PRIME="1142423"
 # DATA_FILE="data/pretrain_hq"
-DATA_FILE="data/datasets_final"
+DATA_FILE="data/output"
 DATA_TYPE="binidx"
 #
 python train.py \
