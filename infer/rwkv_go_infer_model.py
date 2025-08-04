@@ -23,17 +23,12 @@ from rwkv.utils import PIPELINE
 
 args = types.SimpleNamespace()
 args.strategy = "cuda fp16"  # use CUDA, fp16
-args.MODEL_NAME = "out/L24-D384-x070/rwkv-6"
+args.MODEL_NAME = "rwkv-final"
 
-STATE_NAME = None # use vanilla zero initial state?
+STATE_NAME = None # use vanilla zero initial state? 
 
 GEN_TEMP = 1.2
 GEN_TOP_P = 0.8
-GEN_alpha_presence = 0.8
-GEN_alpha_frequency = 0.8
-GEN_penalty_decay = 0.996
-
-CHUNK_LEN = 16  # split input into chunks to save VRAM (shorter -> slower, but saves VRAM)
 
 ########################################################################################################
 
@@ -41,8 +36,8 @@ print(f"Loading model - {args.MODEL_NAME}")
 model = RWKV(model=args.MODEL_NAME, strategy=args.strategy)
 pipeline = PIPELINE(model, "rwkv_vocab_v20230424")
 tokenizer = TRIE_TOKENIZER("data/tokenizer/rwkv_Goose_Go_vocab.txt")
-model_tokens = []
 model_state = None
+init_state = None
 
 if STATE_NAME != None: # load custom state
     args = model.args
@@ -55,114 +50,71 @@ if STATE_NAME != None: # load custom state
         state_init[i*3+0] = torch.zeros(args.n_embd, dtype=atype, requires_grad=False, device=dev).contiguous()
         state_init[i*3+1] = state_raw[f'blocks.{i}.att.time_state'].transpose(1,2).to(dtype=torch.float, device=dev).requires_grad_(False).contiguous()
         state_init[i*3+2] = torch.zeros(args.n_embd, dtype=atype, requires_grad=False, device=dev).contiguous()
-    model_state = copy.deepcopy(state_init)
+    init_state = copy.deepcopy(state_init)
 
-def run_rnn(ctx):
-    global model_tokens, model_state
+def reset_model_state():
+    """Resets the RNN state. Call this before starting a new game."""
+    global model_state
+    model_state = copy.deepcopy(init_state) if init_state is not None else None
+    print("Model state has been reset.")
 
-    tokens = tokenizer.encode(ctx)
-    tokens = [int(x) for x in tokens]
-    model_tokens += tokens
-    # print(f"### model ###\n{model_tokens}\n[{tokenizer.decode(model_tokens)}]")  # debug
-    while len(tokens) > 0:
-        out, model_state = model.forward(tokens[:CHUNK_LEN], model_state)
-        tokens = tokens[CHUNK_LEN:]
-
-    return out
-
-def predict_go_move(input_sequence):
-    global model_tokens, model_state
+def predict_go_move(input_move_notation):
+    """
+    Predicts the next move based on the previous single move.
+    Manages the RNN state internally.
+    """
+    global model_state
     
-    # Reset state for each prediction
-    model_tokens = []
-    model_state = None
-    
-    occurrence = {}
-    out_tokens = []
-    out_last = 0
-    
-    # Run the model
-    if not input_sequence:
-        # If input is empty (first move), initialize 'out' with a space token to start the RNN state
-        out, model_state = model.forward([tokenizer.encode(' ')[0]], None)
+    # If input is None (start of the game for white player), we need a starting token.
+    # We use token 0, which is a common practice for starting a sequence.
+    if input_move_notation is None:
+        tokens = [0]
     else:
-        out = run_rnn(input_sequence)
+        tokens = tokenizer.encode(input_move_notation)
+        if not tokens:
+            print(f"Warning: Could not encode move '{input_move_notation}'. Using a default token.")
+            tokens = [0] # Fallback if encoding fails
 
-    # print("Predicted move: ", end="")
-
-    stop_token_id = tokenizer.encode(" ")[0] if tokenizer.encode(" ") else 32  # ASCII for space
+    # Forward pass to update state and get logits
+    out, model_state = model.forward(tokens, model_state)
     
-    for i in range(6):  # Limit to 100 tokens to prevent infinite loop
-        # Apply repetition penalty
-        for n in occurrence:
-            out[n] -= GEN_alpha_presence + occurrence[n] * GEN_alpha_frequency
-        out[0] -= 1e10  # disable END_OF_TEXT
-
-        token = pipeline.sample_logits(out, temperature=GEN_TEMP, top_p=GEN_TOP_P)
-
-        out, model_state = model.forward([token], model_state)
-        model_tokens += [token]
-        out_tokens += [token]
-
-        # Update occurrence for repetition penalty
-        for xxx in occurrence:
-            occurrence[xxx] *= GEN_penalty_decay
-        occurrence[token] = 1 + (occurrence[token] if token in occurrence else 0)
-
-        # Decode and print tokens
-        tmp = tokenizer.decode(out_tokens[out_last:])
-        if ("\ufffd" not in tmp) and (not tmp.endswith("\n")):
-            print(tmp, end="", flush=True)
-            out_last = i + 1
-
-        # Stop when we encounter a space (move separator) AND we have at least 2 tokens
-        if token == stop_token_id and len(out_tokens) >= 2:
-            print("", end=" ", flush=True)
-            break
-            
-        # Also break if we have a reasonable move prediction (at least 2 chars and ends with space)
-        decoded = tokenizer.decode(out_tokens)
-        if len(decoded.strip()) >= 2 and decoded.strip()[-1] == ' ' and len(out_tokens) >= 2:
-            break
+    # Sample the next token
+    token = pipeline.sample_logits(out, temperature=GEN_TEMP, top_p=GEN_TOP_P)
     
-    return tokenizer.decode(out_tokens).strip()
+    return tokenizer.decode([token])
 
 def infinite_prediction():
     print("Go Game Infinite Prediction Mode")
-    initial_input = input("Enter initial move sequence: ").strip()
+    reset_model_state()
+    initial_input = input("Enter initial move sequence (or leave blank to start): ").strip()
     
-    if not initial_input:
-        print("No initial input provided. Exiting infinite prediction mode.")
-        return
+    if initial_input:
+        # Prime the model with the initial sequence
+        print(f"Priming with: {initial_input}")
+        predict_go_move(initial_input)
     
-    current_context = initial_input
-    print(f"Starting with: {current_context}")
+    last_move = initial_input if initial_input else None
     
     try:
         while True:
-            predicted_move = predict_go_move(current_context)
+            predicted_move = predict_go_move(last_move)
             
-            if predicted_move:
-                predicted_move = predicted_move.lstrip()
-                
-                if predicted_move:  # 确保移除空格后还有内容
-                    current_context = predicted_move
-                    # print(f"Context updated: {current_context}")
-                else:
-                    print("No valid move predicted (only whitespace). Stopping infinite prediction.")
-                    break
-            else:
-                print("No move predicted. Stopping infinite prediction.")
+            if predicted_move == '\ufffd':
+                print("\nEnd of sequence (special character detected)")
                 break
+                
+            print(f"{predicted_move}", end='', flush=True) 
+            last_move = predicted_move
             
     except KeyboardInterrupt:
         print("\n\nInfinite prediction interrupted by user.")
     except Exception as e:
         print(f"\nError during infinite prediction: {e}")
+        import traceback
+        traceback.print_exc()
     
     print("Exited infinite prediction mode.")
 
 
 if __name__ == "__main__":
     infinite_prediction()
-    

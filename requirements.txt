@@ -5,3 +5,4 @@ wandb
 ninja
 rwkv-fla>=0.7.202506141151
 transformers
+pygame
