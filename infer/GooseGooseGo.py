@@ -40,8 +40,8 @@ args.MODEL_NAME = MODEL_PATH
 STATE_NAME = None
 # IMPORTANT: Temperature MUST be > 0 for re-inference to work. 
 # A value of 0 makes the output deterministic, causing infinite loops on invalid moves.
-GEN_TEMP = 1.2 
-GEN_TOP_P = 0.8 # Using a top_p is also good practice for sampling
+GEN_TEMP = 0.8
+GEN_TOP_P = 0.95 # Using a top_p is also good practice for sampling
 
 print(f"Loading model - {args.MODEL_NAME} with strategy {args.strategy}")
 model = RWKV(model=args.MODEL_NAME, strategy=args.strategy)
@@ -97,7 +97,7 @@ def predict_go_move(input_move_notation):
 
 # --- PYGAME FRONTEND START ---
 BOARD_SIZE = 19
-GRID_WIDTH = 40 
+GRID_WIDTH = 60
 MARGIN = 50
 INFO_PANEL_HEIGHT = 100
 WINDOW_WIDTH = 2 * MARGIN + (BOARD_SIZE - 1) * GRID_WIDTH

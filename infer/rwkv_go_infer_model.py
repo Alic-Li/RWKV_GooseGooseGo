@@ -27,8 +27,8 @@ args.MODEL_NAME = "rwkv-final"
 
 STATE_NAME = None # use vanilla zero initial state? 
 
-GEN_TEMP = 1.2
-GEN_TOP_P = 0.8
+GEN_TEMP = 0.8
+GEN_TOP_P = 0.95
 
 ########################################################################################################
 
