@@ -378,76 +378,130 @@ class GameUI:
     # <--- NEW, REFINED LOGIC
     def handle_ai_move(self):
         """
-        Handles AI's turn with a re-inference loop for invalid moves.
+        Handles AI's turn by selecting the highest probability valid move.
         """
         global model_state
         self.ai_is_thinking = True
         self.status_text = "AI is thinking..."
         self.draw_and_update()
         
-        MAX_REINFERENCE_ATTEMPTS = 15 # Max number of times AI tries to find a valid move in a single turn
+        # Get the model output distribution
+        last_input_for_ai = to_notation(self.board.history[-1] if self.board.history else None)
         
-        # This is the main loop for re-inferring if a move is invalid.
-        for attempt in range(MAX_REINFERENCE_ATTEMPTS):
-            # IMPORTANT: Save the state *before* this attempt.
-            state_before_this_attempt = copy.deepcopy(model_state)
+        if last_input_for_ai is None:
+            tokens = [0]
+        else:
+            tokens = tokenizer.encode(last_input_for_ai)
+            if not tokens:
+                print(f"Warning: Could not encode move '{last_input_for_ai}'. Using a default token.")
+                tokens = [0]
+    
+        # Get model output logits
+        out, model_state_new = model.forward(tokens, model_state)
+        
+        # Get logits and apply temperature
+        logits = out.float().cpu()
+        if GEN_TEMP > 0:
+            logits = logits / GEN_TEMP
+        
+        # Apply top_p filtering
+        if GEN_TOP_P < 1.0:
+            sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
+            indices_to_remove = cumulative_probs > GEN_TOP_P
+            indices_to_remove[..., 1:] = indices_to_remove[..., :-1].clone()
+            indices_to_remove[..., 0] = 0
+            sorted_logits[indices_to_remove] = float('-inf')
+            logits = torch.zeros_like(logits).scatter_(-1, sorted_indices, sorted_logits)
+        
+        # Get probabilities and sort by probability
+        probs = torch.softmax(logits, dim=-1)
+        sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+        
+        # Try moves in order of probability
+        max_attempts = 200  # Limit to prevent infinite loops
+        for i in range(min(max_attempts, len(sorted_indices))):
+            token = sorted_indices[i].item()
+            prob = sorted_probs[i].item()
             
-            # Determine the input for the AI's first prediction in this attempt.
-            last_input_for_ai = to_notation(self.board.history[-1] if self.board.history else None)
+            move_str = tokenizer.decode([token])
             
-            # Inner loop to construct a full coordinate (e.g., 'P' + 'p' -> "Pp")
-            current_attempt_str = ""
-            for _ in range(4): # Try to build a move up to 4 tokens long
-                next_token = predict_go_move(last_input_for_ai)
-
-                if next_token is None or next_token == '\ufffd' or next_token.strip().upper() == 'X':
-                    current_attempt_str = "X" # Treat as a pass
-                    break
-                
-                current_attempt_str += next_token.strip()
-
-                if from_notation(current_attempt_str):
-                    break # Successfully formed a 2-char coordinate
-                
-                # Use the generated token as the next input
-                last_input_for_ai = next_token
-
-            # Now, validate the constructed move notation
-            final_move_notation = current_attempt_str
-            print(f"Attempt {attempt + 1}: AI constructed move '{final_move_notation}'")
-
-            if final_move_notation.strip().upper() == 'X':
-                print("AI chose to pass.")
+            # Check for pass move
+            if move_str is None or move_str == '\ufffd' or move_str.strip().upper() == 'X':
+                print(f"AI chose to pass (probability: {prob:.4f}).")
                 self.board.pass_turn()
                 self.last_move = 'PASS'
                 self.pass_count += 1
                 self.ai_is_thinking = False
+                model_state = model_state_new
                 self.switch_player()
-                return # Exit successfully after passing
-
-            move = from_notation(final_move_notation)
-            if move and self.board.is_valid_move(move[0], move[1], self.ai_player):
-                print(f"Move '{final_move_notation}' is valid. Placing stone.")
-                self.board.place_stone(move[0], move[1], self.ai_player)
-                self.last_move = move
-                self.pass_count = 0
-                self.ai_is_thinking = False
-                self.switch_player()
-                return # Exit successfully after a valid move
-
-            # If the move was invalid, restore the state and try again.
-            print(f"Move '{final_move_notation}' is invalid. Re-inferring...")
-            model_state = state_before_this_attempt
-            self.draw_and_update() # Keep UI responsive
-
-        # If all attempts fail, the AI passes its turn.
-        print(f"AI failed to find a valid move after {MAX_REINFERENCE_ATTEMPTS} attempts. Passing.")
-        self.board.pass_turn()
+                return
+            
+            # Try to build a complete move notation
+            current_attempt_str = move_str.strip()
+            
+            # If this is already a valid move notation, check it
+            move = from_notation(current_attempt_str)
+            if move:
+                if self.board.is_valid_move(move[0], move[1], self.ai_player):
+                    print(f"Move '{current_attempt_str}' is valid (probability: {prob:.4f}). Placing stone.")
+                    self.board.place_stone(move[0], move[1], self.ai_player)
+                    self.last_move = move
+                    self.pass_count = 0
+                    self.ai_is_thinking = False
+                    model_state = model_state_new
+                    self.switch_player()
+                    return
+                else:
+                    print(f"Move '{current_attempt_str}' is invalid (probability: {prob:.4f}), trying next candidate...")
+                    continue
+                
+            # If not a complete notation, try to get a second token to complete it
+            temp_state = copy.deepcopy(model_state_new)
+            next_out, _ = model.forward([token], temp_state)
+            
+            # Process second token
+            next_logits = next_out.float().cpu()
+            if GEN_TEMP > 0:
+                next_logits = next_logits / GEN_TEMP
+                
+            next_probs = torch.softmax(next_logits, dim=-1)
+            next_sorted_probs, next_sorted_indices = torch.sort(next_probs, descending=True)
+            
+            # Try top 10 second tokens
+            for j in range(min(10, len(next_sorted_indices))):
+                next_token = next_sorted_indices[j].item()
+                second_part = tokenizer.decode([next_token])
+                
+                if second_part and second_part != '\ufffd':
+                    full_move_str = (current_attempt_str + second_part).strip()
+                    move = from_notation(full_move_str)
+                    if move and self.board.is_valid_move(move[0], move[1], self.ai_player):
+                        combined_prob = prob * next_sorted_probs[j].item()
+                        print(f"Move '{full_move_str}' is valid (combined probability: {combined_prob:.4f}). Placing stone.")
+                        self.board.place_stone(move[0], move[1], self.ai_player)
+                        self.last_move = move
+                        self.pass_count = 0
+                        self.ai_is_thinking = False
+                        model_state = model_state_new
+                        _, model_state = model.forward([token], model_state)
+                        self.switch_player()
+                        return
+                    else:
+                        print(f"Move '{full_move_str}' is invalid, trying next candidate...")
+    
+        # If no valid move found, AI resigns
+        print("AI failed to find a valid move. AI resigns.")
+        self.board.pass_turn()  # Still record the pass in history
         self.last_move = 'PASS'
         self.pass_count += 1
         self.ai_is_thinking = False
-        self.switch_player()
-
+        model_state = model_state_new
+        
+        # Declare human player as winner
+        winner = "Black" if self.human_player == PLAYER_BLACK else "White"
+        self.status_text = f"AI resigns! {winner} wins!"
+        self.game_over = True
     def switch_player(self):
         if self.pass_count >= 2:
             self.status_text = "Game Over (2 consecutive passes)."

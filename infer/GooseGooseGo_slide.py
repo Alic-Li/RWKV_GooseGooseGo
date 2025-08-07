@@ -66,7 +66,7 @@ if STATE_NAME is not None:
 def reset_model_state():
     """Resets the RNN state. Call this before starting a new game."""
     global model_state
-    model_state = copy.deepcopy(init_state) if init_state is not None else None
+    # model_state = copy.deepcopy(init_state) if init_state is not None else None
     print("AI model state has been reset for a new game.")
 
 
