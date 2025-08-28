@@ -11,3 +11,4 @@ dataset_cleaned.jsonl
 wandb
 *.bin
 *.idx
+data/katago_data/2025*
