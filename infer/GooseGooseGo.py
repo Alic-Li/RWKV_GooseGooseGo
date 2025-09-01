@@ -3,101 +3,26 @@ import sys
 import time
 import os
 import copy
-import types
-import torch
+from rwkv_go_infer_model import infer_from_sequence
 
-os.environ["RWKV_V7_ON"] = "1"
-os.environ["RWKV_JIT_ON"] = "1"
-# '1' to compile CUDA kernel (requires compiler), '0' for CPU-friendly version
-os.environ["RWKV_CUDA_ON"] = "0" 
-
-########################################################################################################
-# The RWKV Language Model - https://github.com/BlinkDL/RWKV-LM
-# Modified for Go Game Inference
-# --- AI BACKEND START ---
-########################################################################################################
-
-print("RWKV GooseGooseGo Go Game Inference Model")
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# IMPORTANT: Set your model and vocab paths here.
-MODEL_PATH = "rwkv-final" # Corrected to include extension
-VOCAB_PATH = "data/tokenizer/rwkv_Goose_Go_vocab.txt"
-
-
-from data.tokenizer.rwkv_tokenizer import TRIE_TOKENIZER
-from rwkv.model import RWKV
-from rwkv.utils import PIPELINE
-
-torch.backends.cudnn.benchmark = True
-torch.backends.cudnn.allow_tf32 = True
-torch.backends.cuda.matmul.allow_tf32 = True
-
-args = types.SimpleNamespace()
-# Change to "cpu fp32" if you don't have a CUDA-enabled GPU
-args.strategy = "cuda fp16" 
-args.MODEL_NAME = MODEL_PATH
-
-STATE_NAME = None
-# IMPORTANT: Temperature MUST be > 0 for re-inference to work. 
-# A value of 0 makes the output deterministic, causing infinite loops on invalid moves.
-GEN_TEMP = 0.8
-GEN_TOP_P = 0.95 # Using a top_p is also good practice for sampling
-
-print(f"Loading model - {args.MODEL_NAME} with strategy {args.strategy}")
-model = RWKV(model=args.MODEL_NAME, strategy=args.strategy)
-pipeline = PIPELINE(model, "rwkv_vocab_v20230424")
-tokenizer = TRIE_TOKENIZER(VOCAB_PATH)
-model_state = None
-init_state = None
-
-if STATE_NAME is not None:
-    args = model.args
-    state_raw = torch.load(STATE_NAME + '.pth')
-    state_init = [None for i in range(args.n_layer * 3)]
-    for i in range(args.n_layer):
-        dd = model.strategy[i]
-        dev = dd.device
-        atype = dd.atype    
-        state_init[i*3+0] = torch.zeros(args.n_embd, dtype=atype, requires_grad=False, device=dev).contiguous()
-        state_init[i*3+1] = state_raw[f'blocks.{i}.att.time_state'].transpose(1,2).to(dtype=torch.float, device=dev).requires_grad_(False).contiguous()
-        state_init[i*3+2] = torch.zeros(args.n_embd, dtype=atype, requires_grad=False, device=dev).contiguous()
-    init_state = copy.deepcopy(state_init)
-
-def reset_model_state():
-    """Resets the RNN state. Call this before starting a new game."""
-    global model_state
-    model_state = copy.deepcopy(init_state) if init_state is not None else None
-    print("AI model state has been reset for a new game.")
-
-def predict_go_move(input_move_notation):
+def board_to_text_representation(board, next_player):
     """
-    Predicts the NEXT TOKEN based on the previous single move/token.
-    Manages the RNN state internally.
+    Converts the Pygame board object into a string representation
+    for the inference model.
     """
-    global model_state
+    player_map = {0: '#', PLAYER_BLACK: 'B', PLAYER_WHITE: 'W'}
+    board_str = ""
+    for y in range(board.size):
+        row_str = "".join([player_map[board.grid[y][x]] for x in range(board.size)])
+        board_str += row_str + "\n"
     
-    if input_move_notation is None:
-        tokens = [0]
-    else:
-        tokens = tokenizer.encode(input_move_notation)
-        if not tokens:
-            print(f"Warning: Could not encode move '{input_move_notation}'. Using a default token.")
-            tokens = [0]
-
-    out, model_state_new = model.forward(tokens, model_state)
-    model_state = model_state_new # Update the global state
-    
-    token = pipeline.sample_logits(out, temperature=GEN_TEMP, top_p=GEN_TOP_P)
-    
-    return tokenizer.decode([token])
-
-# --- AI BACKEND END ---
-########################################################################################################
+    player_color = "Black" if next_player == PLAYER_BLACK else "White"
+    return board_str.strip() + f"\n{player_color}"
 
 
-# --- PYGAME FRONTEND START ---
+# --- PYGAME FRONTEND START --- (Most remains the same)
 BOARD_SIZE = 19
-GRID_WIDTH = 60
+GRID_WIDTH = 60 # Reduced for a better fit on some screens
 MARGIN = 50
 INFO_PANEL_HEIGHT = 100
 WINDOW_WIDTH = 2 * MARGIN + (BOARD_SIZE - 1) * GRID_WIDTH
@@ -105,7 +30,7 @@ WINDOW_HEIGHT = 2 * MARGIN + (BOARD_SIZE - 1) * GRID_WIDTH + INFO_PANEL_HEIGHT
 
 BLACK_COLOR = (0, 0, 0)
 WHITE_COLOR = (255, 255, 255)
-BOARD_COLOR = (218, 165, 32) 
+BOARD_COLOR = (218, 165, 32)
 LINE_COLOR = (50, 50, 50)
 TEXT_COLOR = (10, 10, 10)
 BUTTON_COLOR = (100, 100, 200)
@@ -120,24 +45,34 @@ MODE_MENU = 0
 MODE_PLAYER_IS_BLACK = 1
 MODE_PLAYER_IS_WHITE = 2
 
-COORDS_X = "ABCDEFGHIJKLMNOPQRS" 
-COORDS_Y = "abcdefghijklmnopqrs" 
+COORDS_X = "ABCDEFGHIJKLMNOPQRS"
+# COORDS_Y = "abcdefghijklmnopqrs"
+COORDS_Y = "srqponmlkjihgfedcba"
+
 
 def to_notation(point):
     if point is None: return None
-    if point == 'PASS': return 'X'
+    if point == 'PASS': return 'PASS'
     x, y = point
     if not (0 <= x < BOARD_SIZE and 0 <= y < BOARD_SIZE): return ""
     return COORDS_X[x] + COORDS_Y[y]
 
+
 def from_notation(notation):
-    if not isinstance(notation, str) or len(notation) != 2: return None
+    """Converts Go notation (e.g., 'D4', 'Qh') to (x, y) coordinates."""
+    if not isinstance(notation, str) or len(notation) < 2: return None
     notation = notation.strip()
+    
     if len(notation) != 2: return None
-    x_char, y_char = notation[0].upper(), notation[1].lower()
-    if x_char not in COORDS_X or y_char not in COORDS_Y: return None
-    x = COORDS_X.index(x_char)
-    y = COORDS_Y.index(y_char)
+
+    col_char = notation[0].upper()
+    row_char = notation[1].lower()
+
+    if col_char not in COORDS_X or row_char not in COORDS_Y: return None
+
+    x = COORDS_X.index(col_char)
+    y = COORDS_Y.index(row_char)
+    
     return x, y
 
 class Board:
@@ -158,11 +93,29 @@ class Board:
         if self.grid[y][x] != 0: return False
         if (x, y) == self.ko_point: return False
         
-        self.grid[y][x] = player
-        is_suicide = not self._has_liberties((x, y)) and not self._will_capture((x, y), player)
-        self.grid[y][x] = 0
-        if is_suicide: return False
+        # Create a temporary board to test for suicide
+        temp_grid = [row[:] for row in self.grid]
+        temp_grid[y][x] = player
         
+        # Check if the move captures any opponent stones
+        opponent = 3 - player
+        captures_made = False
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < self.size and 0 <= ny < self.size and temp_grid[ny][nx] == opponent:
+                group, liberties = self._find_group_on_board(nx, ny, temp_grid)
+                if not liberties:
+                    captures_made = True
+                    break
+        
+        if captures_made:
+            return True # Move is valid because it captures
+
+        # If no captures, check if the move itself has liberties (not suicide)
+        _, final_liberties = self._find_group_on_board(x, y, temp_grid)
+        if not final_liberties:
+            return False # Suicidal move
+
         return True
 
     def place_stone(self, x, y, player):
@@ -173,49 +126,33 @@ class Board:
         
         captured_stones = self._capture_stones(x, y, player)
         
+        # Simplified Ko logic
         self.ko_point = None
         if len(captured_stones) == 1:
-            captured_x, captured_y = captured_stones[0]
-            # Check if the move that resulted in a single capture was itself part of a group with no liberties (a ko-like situation)
-            if not self._has_liberties((x, y)):
-                 # Simulate placing the captured stone back to see if it would have no liberties (a true ko)
-                 self.grid[captured_y][captured_x] = 3 - player
-                 if not self._has_liberties((captured_x, captured_y)):
-                      self.ko_point = (captured_x, captured_y)
-                 self.grid[captured_y][captured_x] = 0 # Revert simulation
+            # Check if the move resulted in a Ko situation
+            group, liberties = self._find_group(x, y)
+            if len(group) == 1 and not liberties:
+                self.ko_point = captured_stones[0]
 
         return captured_stones
-
+        
     def _capture_stones(self, x, y, player):
         captured_stones = []
         opponent = 3 - player
         for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             nx, ny = x + dx, y + dy
             if 0 <= nx < self.size and 0 <= ny < self.size and self.grid[ny][nx] == opponent:
-                if not self._has_liberties((nx, ny)):
-                    group, _ = self._find_group(nx, ny)
+                group, liberties = self._find_group(nx, ny)
+                if not liberties:
                     for stone_x, stone_y in group:
-                        self.grid[stone_y][stone_x] = 0
                         if (stone_x, stone_y) not in captured_stones:
+                            self.grid[stone_y][stone_x] = 0
                             captured_stones.append((stone_x, stone_y))
         return captured_stones
 
-    def _will_capture(self, point, player):
-        x, y = point
-        self.grid[y][x] = player
-        opponent = 3 - player
-        captured_something = False
-        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < self.size and 0 <= ny < self.size and self.grid[ny][nx] == opponent:
-                if not self._has_liberties((nx, ny)):
-                    captured_something = True
-                    break
-        self.grid[y][x] = 0
-        return captured_something
-
-    def _find_group(self, x, y):
-        player = self.grid[y][x]
+    def _find_group_on_board(self, x, y, board_grid):
+        """Finds the group of connected stones and their liberties on a given grid."""
+        player = board_grid[y][x]
         if player == 0: return [], []
         q, visited, group, liberties = [(x, y)], set([(x, y)]), [], set()
         while q:
@@ -224,17 +161,15 @@ class Board:
             for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 nx, ny = cx + dx, cy + dy
                 if 0 <= nx < self.size and 0 <= ny < self.size:
-                    if self.grid[ny][nx] == 0: liberties.add((nx, ny))
-                    elif self.grid[ny][nx] == player and (nx, ny) not in visited:
+                    if board_grid[ny][nx] == 0: liberties.add((nx, ny))
+                    elif board_grid[ny][nx] == player and (nx, ny) not in visited:
                         visited.add((nx, ny))
                         q.append((nx, ny))
-        return group, liberties
+        return group, list(liberties)
 
-    def _has_liberties(self, point):
-        x, y = point
-        _, liberties = self._find_group(x, y)
-        return len(liberties) > 0
-
+    def _find_group(self, x, y):
+        """Helper to find a group on the current main board."""
+        return self._find_group_on_board(x, y, self.grid)
 
 class GameUI:
     def __init__(self, board):
@@ -257,21 +192,26 @@ class GameUI:
     def draw_board(self):
         self.screen.fill(BOARD_COLOR)
         for i in range(BOARD_SIZE):
+            # Vertical and horizontal lines
             start_pos_h = (MARGIN + i * GRID_WIDTH, MARGIN)
             end_pos_h = (MARGIN + i * GRID_WIDTH, MARGIN + (BOARD_SIZE - 1) * GRID_WIDTH)
             pygame.draw.line(self.screen, LINE_COLOR, start_pos_h, end_pos_h)
             start_pos_v = (MARGIN, MARGIN + i * GRID_WIDTH)
             end_pos_v = (MARGIN + (BOARD_SIZE - 1) * GRID_WIDTH, MARGIN + i * GRID_WIDTH)
             pygame.draw.line(self.screen, LINE_COLOR, start_pos_v, end_pos_v)
+        
+        # Star points
         star_points = [(3, 3), (3, 9), (3, 15), (9, 3), (9, 9), (9, 15), (15, 3), (15, 9), (15, 15)]
         for p in star_points:
             pos = (MARGIN + p[0] * GRID_WIDTH, MARGIN + p[1] * GRID_WIDTH)
             pygame.draw.circle(self.screen, LINE_COLOR, pos, 5)
+            
+        # Coordinates
         for i in range(BOARD_SIZE):
             text = self.small_font.render(COORDS_X[i], True, TEXT_COLOR)
-            self.screen.blit(text, (MARGIN + i * GRID_WIDTH - text.get_width() // 2, MARGIN - 30))
-            text = self.small_font.render(str(i + 1), True, TEXT_COLOR)
-            self.screen.blit(text, (MARGIN - 30, MARGIN + i * GRID_WIDTH - text.get_height() // 2))
+            self.screen.blit(text, (MARGIN + i * GRID_WIDTH - text.get_width() // 2, MARGIN - 35))
+            text = self.small_font.render(str(BOARD_SIZE - i), True, TEXT_COLOR) # Numbers from 19 down to 1
+            self.screen.blit(text, (MARGIN - 35, MARGIN + i * GRID_WIDTH - text.get_height() // 2))
 
     def draw_stones(self):
         for y in range(self.board.size):
@@ -281,6 +221,7 @@ class GameUI:
                     color = BLACK_COLOR if player == PLAYER_BLACK else WHITE_COLOR
                     pos = (MARGIN + x * GRID_WIDTH, MARGIN + y * GRID_WIDTH)
                     pygame.draw.circle(self.screen, color, pos, GRID_WIDTH // 2 - 2)
+        # Highlight the last move
         if self.last_move and self.last_move != 'PASS':
             x, y = self.last_move
             pos = (MARGIN + x * GRID_WIDTH, MARGIN + y * GRID_WIDTH)
@@ -294,8 +235,8 @@ class GameUI:
         self.screen.blit(text, (20, WINDOW_HEIGHT - INFO_PANEL_HEIGHT + 35))
 
         if self.game_mode == MODE_MENU:
-            self.play_black_button = self.draw_button("Play as Black (vs AI)", 150, WINDOW_HEIGHT - 70, 250, 50)
-            self.play_white_button = self.draw_button("Play as White (vs AI)", 450, WINDOW_HEIGHT - 70, 250, 50)
+            self.play_black_button = self.draw_button("Play as Black", 450, WINDOW_HEIGHT - 70, 250, 50)
+            self.play_white_button = self.draw_button("Play as White", 750, WINDOW_HEIGHT - 70, 250, 50)
         else:
             self.pass_button = self.draw_button("Pass", 550, WINDOW_HEIGHT - 70, 100, 50)
             self.new_game_button = self.draw_button("New Game", 680, WINDOW_HEIGHT - 70, 150, 50)
@@ -320,7 +261,8 @@ class GameUI:
                 self.start_new_game(MODE_PLAYER_IS_WHITE)
         else:
             if self.new_game_button.collidepoint(pos):
-                self.start_new_game(MODE_MENU)
+                self.game_mode = MODE_MENU
+                self.status_text = "Welcome! Select a game mode."
                 return
             if self.pass_button.collidepoint(pos) and self.current_player == self.human_player:
                 self.handle_pass()
@@ -341,7 +283,6 @@ class GameUI:
 
     def start_new_game(self, mode):
         self.board.reset()
-        reset_model_state()
         self.game_mode = mode
         self.current_player = PLAYER_BLACK
         self.last_move = None
@@ -355,7 +296,7 @@ class GameUI:
         elif mode == MODE_PLAYER_IS_WHITE:
             self.human_player, self.ai_player = PLAYER_WHITE, PLAYER_BLACK
             self.status_text = "You are White. AI (Black) is thinking..."
-        else:
+        else: # Back to menu
             self.human_player, self.ai_player = None, None
             self.status_text = "Welcome! Select a game mode."
 
@@ -375,133 +316,75 @@ class GameUI:
         print(f"Player {self.current_player} passed. Consecutive passes: {self.pass_count}")
         self.switch_player()
 
-    # <--- NEW, REFINED LOGIC
     def handle_ai_move(self):
-        """
-        Handles AI's turn by selecting the highest probability valid move.
-        """
-        global model_state
         self.ai_is_thinking = True
         self.status_text = "AI is thinking..."
         self.draw_and_update()
         
-        # Get the model output distribution
-        last_input_for_ai = to_notation(self.board.history[-1] if self.board.history else None)
-        
-        if last_input_for_ai is None:
-            tokens = [0]
-        else:
-            tokens = tokenizer.encode(last_input_for_ai)
-            if not tokens:
-                print(f"Warning: Could not encode move '{last_input_for_ai}'. Using a default token.")
-                tokens = [0]
-    
-        # Get model output logits
-        out, model_state_new = model.forward(tokens, model_state)
-        
-        # Get logits and apply temperature
-        logits = out.float().cpu()
-        if GEN_TEMP > 0:
-            logits = logits / GEN_TEMP
-        
-        # Apply top_p filtering
-        if GEN_TOP_P < 1.0:
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-            cumulative_probs = torch.cumsum(torch.softmax(sorted_logits, dim=-1), dim=-1)
-            indices_to_remove = cumulative_probs > GEN_TOP_P
-            indices_to_remove[..., 1:] = indices_to_remove[..., :-1].clone()
-            indices_to_remove[..., 0] = 0
-            sorted_logits[indices_to_remove] = float('-inf')
-            logits = torch.zeros_like(logits).scatter_(-1, sorted_indices, sorted_logits)
-        
-        # Get probabilities and sort by probability
-        probs = torch.softmax(logits, dim=-1)
-        sorted_probs, sorted_indices = torch.sort(probs, descending=True)
-        
-        # Try moves in order of probability
-        max_attempts = 200  # Limit to prevent infinite loops
-        for i in range(min(max_attempts, len(sorted_indices))):
-            token = sorted_indices[i].item()
-            prob = sorted_probs[i].item()
-            
-            move_str = tokenizer.decode([token])
-            
-            # Check for pass move
-            if move_str is None or move_str == '\ufffd' or move_str.strip().upper() == 'X':
-                print(f"AI chose to pass (probability: {prob:.4f}).")
+        max_retries = 5
+        for attempt in range(max_retries):
+            # 1. Convert board to string and get prediction from the model
+            input_sequence = board_to_text_representation(self.board, self.ai_player)
+            predicted_notation = infer_from_sequence(input_sequence)
+            print(f"--- Attempt {attempt+1}/{max_retries} ---")
+            print(f"AI model predicted move: '{predicted_notation}'")
+
+            # 2. Handle a "PASS" move
+            if predicted_notation and predicted_notation.strip().upper() == 'PASS':
+                print("AI chose to pass.")
                 self.board.pass_turn()
                 self.last_move = 'PASS'
                 self.pass_count += 1
                 self.ai_is_thinking = False
-                model_state = model_state_new
                 self.switch_player()
                 return
+
+            # 3. Convert notation to coordinates
+            move = from_notation(predicted_notation)
             
-            # Try to build a complete move notation
-            current_attempt_str = move_str.strip()
-            
-            # If this is already a valid move notation, check it
-            move = from_notation(current_attempt_str)
             if move:
-                if self.board.is_valid_move(move[0], move[1], self.ai_player):
-                    print(f"Move '{current_attempt_str}' is valid (probability: {prob:.4f}). Placing stone.")
-                    self.board.place_stone(move[0], move[1], self.ai_player)
-                    self.last_move = move
+                x, y = move
+                # 4a. Check if the original predicted move is valid
+                if self.board.is_valid_move(x, y, self.ai_player):
+                    print(f"Move {predicted_notation} is valid. Placing stone.")
+                    self.board.place_stone(x, y, self.ai_player)
+                    self.last_move = (x, y)
                     self.pass_count = 0
                     self.ai_is_thinking = False
-                    model_state = model_state_new
                     self.switch_player()
-                    return
+                    return # Success
+                
+                # 4b. If the original move is invalid, try mirroring the y-coordinate
                 else:
-                    print(f"Move '{current_attempt_str}' is invalid (probability: {prob:.4f}), trying next candidate...")
-                    continue
-                
-            # If not a complete notation, try to get a second token to complete it
-            temp_state = copy.deepcopy(model_state_new)
-            next_out, _ = model.forward([token], temp_state)
-            
-            # Process second token
-            next_logits = next_out.float().cpu()
-            if GEN_TEMP > 0:
-                next_logits = next_logits / GEN_TEMP
-                
-            next_probs = torch.softmax(next_logits, dim=-1)
-            next_sorted_probs, next_sorted_indices = torch.sort(next_probs, descending=True)
-            
-            # Try top 10 second tokens
-            for j in range(min(10, len(next_sorted_indices))):
-                next_token = next_sorted_indices[j].item()
-                second_part = tokenizer.decode([next_token])
-                
-                if second_part and second_part != '\ufffd':
-                    full_move_str = (current_attempt_str + second_part).strip()
-                    move = from_notation(full_move_str)
-                    if move and self.board.is_valid_move(move[0], move[1], self.ai_player):
-                        combined_prob = prob * next_sorted_probs[j].item()
-                        print(f"Move '{full_move_str}' is valid (combined probability: {combined_prob:.4f}). Placing stone.")
-                        self.board.place_stone(move[0], move[1], self.ai_player)
-                        self.last_move = move
+                    print(f"Move {predicted_notation} at ({x},{y}) is invalid. Trying mirrored move as a fallback.")
+                    mirrored_y = (BOARD_SIZE - 1) - y
+                    mirrored_move = (x, mirrored_y)
+                    
+                    # Check if the mirrored move is valid
+                    if self.board.is_valid_move(mirrored_move[0], mirrored_move[1], self.ai_player):
+                        mirrored_notation = to_notation(mirrored_move)
+                        print(f"Mirrored move {mirrored_notation} at ({mirrored_move[0]},{mirrored_move[1]}) is valid. Placing stone.")
+                        self.board.place_stone(mirrored_move[0], mirrored_move[1], self.ai_player)
+                        self.last_move = mirrored_move
                         self.pass_count = 0
                         self.ai_is_thinking = False
-                        model_state = model_state_new
-                        _, model_state = model.forward([token], model_state)
                         self.switch_player()
-                        return
+                        return # Success with mirrored move
                     else:
-                        print(f"Move '{full_move_str}' is invalid, trying next candidate...")
-    
-        # If no valid move found, AI resigns
-        print("AI failed to find a valid move. AI resigns.")
-        self.board.pass_turn()  # Still record the pass in history
+                        # If both original and mirrored moves are invalid, the loop will try again
+                        print(f"Mirrored move at ({mirrored_move[0]},{mirrored_move[1]}) is also invalid. Requesting new prediction from model.")
+
+            else:
+                print(f"AI returned invalid notation: '{predicted_notation}'. Requesting new prediction from model.")
+        
+        # If the loop finishes without finding any valid move (original or mirrored)
+        print("AI failed to find a valid move after all attempts and fallbacks. AI passes.")
+        self.board.pass_turn()
         self.last_move = 'PASS'
         self.pass_count += 1
         self.ai_is_thinking = False
-        model_state = model_state_new
+        self.switch_player()
         
-        # Declare human player as winner
-        winner = "Black" if self.human_player == PLAYER_BLACK else "White"
-        self.status_text = f"AI resigns! {winner} wins!"
-        self.game_over = True
     def switch_player(self):
         if self.pass_count >= 2:
             self.status_text = "Game Over (2 consecutive passes)."
@@ -525,6 +408,7 @@ class GameUI:
     def run(self):
         running = True
         while running:
+            # AI makes a move if it's its turn
             if self.game_mode != MODE_MENU and self.current_player == self.ai_player and not self.game_over and not self.ai_is_thinking:
                 self.handle_ai_move()
 
@@ -535,7 +419,8 @@ class GameUI:
                     self.handle_click(event.pos)
 
             self.draw_and_update()
-            time.sleep(0.01)
+            # A small delay to keep the CPU usage down
+            pygame.time.wait(10)
 
         pygame.quit()
         sys.exit()

@@ -23,12 +23,12 @@ from rwkv.utils import PIPELINE
 
 args = types.SimpleNamespace()
 args.strategy = "cuda fp16"  # use CUDA, fp16
-args.MODEL_NAME = "rwkv-final"
+args.MODEL_NAME = "rwkv-2981"
 
 STATE_NAME = None # use vanilla zero initial state? 
 
-GEN_TEMP = 0.8
-GEN_TOP_P = 0.95
+GEN_TEMP = 1.5
+GEN_TOP_P = 0
 
 ########################################################################################################
 
@@ -115,6 +115,31 @@ def infinite_prediction():
     
     print("Exited infinite prediction mode.")
 
+def infer_from_sequence(input_sequence):
+
+    global model_state
+    
+    reset_model_state()
+    print(input_sequence)
+    
+    tokens = tokenizer.encode(input_sequence)
+    
+    if not tokens:
+        print("Warning: Empty input sequence. Using default token.")
+        tokens = [0]
+    
+    logits = None
+    current_state = model_state
+    
+    for i, token in enumerate(tokens):
+        logits, current_state = model.forward([token], current_state)
+    
+    token = pipeline.sample_logits(logits, temperature=GEN_TEMP, top_p=GEN_TOP_P)
+    return tokenizer.decode([token])
+
 
 if __name__ == "__main__":
-    infinite_prediction()
+    # infinite_prediction()
+    input_sequence = "###################\n##W################\nWBB#W##############\n#######B#####W#B###\nB##################\n##B##B#############\n###################\n###################\n###################\n###W###########W###\n###################\n############W######\n###################\n##B################\nBB#################\n###W#B#B#W#####W###\n#BB################\n###WWW###W#########\n###################\nBlack"
+    next_move = infer_from_sequence(input_sequence)
+    print(f"Predicted next move: {next_move}")
