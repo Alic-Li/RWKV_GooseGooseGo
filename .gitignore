@@ -12,3 +12,4 @@ wandb
 *.bin
 *.idx
 data/katago_data/2025*
+data/go_capture_simulation_output.jsonl

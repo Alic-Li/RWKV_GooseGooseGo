@@ -46,8 +46,10 @@ def find_group(row, col, board):
 
 def convert_go_dataset(input_file='input.jsonl', output_file='output.jsonl'):
     """
-    将围棋数据集转换为包含每步棋盘状态的格式，并实现吃子逻辑。
-    (已修正解析逻辑)
+    将围棋数据集转换为每步独立保存的格式，并实现吃子逻辑。
+    每个回合一行，格式为：
+    [上一步坐标][颜色token]\n[当前棋盘状态]\n[当前落子坐标][颜色token]
+    或者如果是第一步则没有前缀。
 
     Args:
         input_file (str): 输入的JSONL文件名。
@@ -55,73 +57,90 @@ def convert_go_dataset(input_file='input.jsonl', output_file='output.jsonl'):
     """
     with open(input_file, 'r', encoding='utf-8') as f:
         total_lines = sum(1 for _ in f)
+
     with open(input_file, 'r', encoding='utf-8') as f_in, open(output_file, 'w', encoding='utf-8') as f_out:
         for line in tqdm(f_in, total=total_lines, desc="Processing"):
             data = json.loads(line)
-            # .split() 会按空格分割棋谱
             move_pairs = data['text'].split()
 
             board_size = 19
             board = [['#' for _ in range(board_size)] for _ in range(board_size)]
-            output_text_parts = []
-            
-            # 定义一个内部函数来处理单步棋，避免代码重复
-            def process_a_single_move(move_coord, is_black):
-                nonlocal board # 允许函数修改外部的 board 变量
-                
-                # 1. 生成落子前的棋盘状态
-                board_representation = "\n".join(["".join(row) for row in board])
 
-                # 2. 解析坐标并落子
+            prev_move_coord = None
+            prev_color_token = None
+
+            def process_a_single_move(move_coord, is_black):
+                nonlocal board, prev_move_coord, prev_color_token
+
+                # 解析坐标
                 col = ord(move_coord[0].lower()) - ord('a')
                 row = ord(move_coord[1].lower()) - ord('a')
 
                 if not (0 <= row < board_size and 0 <= col < board_size):
-                    return # 无效坐标，跳过
+                    return  # 无效坐标，跳过
 
                 player_char = 'B' if is_black else 'W'
                 opponent_char = 'W' if is_black else 'B'
                 color_token = "Black" if is_black else "White"
 
+                # 构造当前棋盘状态字符串
+                board_representation = "\n".join(["".join(row) for row in board])
+
+                # 构造输出内容
+                if prev_move_coord is not None and prev_color_token is not None:
+                    prefix = f"{prev_color_token}{prev_move_coord}\n"
+                else:
+                    prefix = ""
+
+                output_text = f"{prefix}{board_representation}\n{color_token}{move_coord}"
+
+                # 写入这一回合的内容
+                f_out.write(json.dumps({"text": output_text}) + '\n')
+
+                # 落子
                 board[row][col] = player_char
 
-                # 3. 检查并移除被吃的对方棋子
+                # 检查并移除被吃的对方棋子
                 for nr, nc in get_neighbors(row, col, board_size):
                     if board[nr][nc] == opponent_char:
                         opponent_group, group_liberties = find_group(nr, nc, board)
                         if not group_liberties:
                             for gr, gc in opponent_group:
                                 board[gr][gc] = '#'
-                
-                # 4. 记录这一步的结果
-                output_text_parts.append(f"{board_representation}\n{move_coord}{color_token}")
 
+                # 更新上一步信息
+                prev_move_coord = move_coord
+                prev_color_token = color_token
 
             # 遍历所有移动对或特殊指令
             for item in move_pairs:
                 if len(item) == 4 and item.isalpha():
-                    # --- 处理一个标准的四字符移动对，例如 "PcCp" ---
                     black_move = item[:2]
                     white_move = item[2:]
-                    
-                    # 处理黑棋
+
                     process_a_single_move(black_move, is_black=True)
-                    
-                    # 处理白棋
                     process_a_single_move(white_move, is_black=False)
 
                 elif 'X' in item:
-                    # --- 处理特殊指令，例如 "HmX" ---
+                    # 特殊指令处理：模拟落子，但不改变颜色
                     board_representation = "\n".join(["".join(row) for row in board])
-                    # 根据用户要求，直接输出坐标和X
-                    output_text_parts.append(f"{board_representation}\n{item}")
 
-            # 将所有步的输出合并为一个字符串并写入文件
-            final_text = "".join(output_text_parts)
-            f_out.write(json.dumps({"text": final_text}) + '\n')
+                    if prev_move_coord is not None and prev_color_token is not None:
+                        prefix = f"{prev_color_token}{prev_move_coord}\n"
+                    else:
+                        prefix = ""
+
+                    output_text = f"{prefix}{board_representation}\n{item}"
+
+                    f_out.write(json.dumps({"text": output_text}) + '\n')
+
+                    # 不更新 prev_move_coord 和 prev_color_token
 
 
 # 运行转换函数
-convert_go_dataset(input_file="/mnt/69043a6d-b152-4bd1-be10-e1130af6487f/dataset_cleaned.jsonl", output_file="/mnt/3f7ab3b2-e663-407a-831c-ee4789165577/go_capture_simulation_output.jsonl")
+convert_go_dataset(
+    input_file="/home/rwkv/alic-li/RWKV_GooseGooseGo/data/dataset_cleaned.jsonl",
+    output_file="/home/rwkv/alic-li/RWKV_GooseGooseGo/data/go_capture_simulation_output.jsonl"
+)
 
-print("数据转换完成，并已保存到 go_capture_simulation_output.jsonl 文件中（已包含吃子逻辑）。")
+print("数据转换完成，并已保存到 go_capture_simulation_output.jsonl 文件中。")

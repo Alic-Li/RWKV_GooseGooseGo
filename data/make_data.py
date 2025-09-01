@@ -115,33 +115,33 @@ def is_prime(n):
 ########################################################################################################
 
 
-N_EPOCH = int(sys.argv[2].strip())
+# N_EPOCH = int(sys.argv[2].strip())
 IN_FILE = sys.argv[1].strip()
 OUT_NAME = os.path.splitext(os.path.basename(IN_FILE))[0]
-CTX_LEN = int(sys.argv[3].strip())
-TEMP_FILE = "make_data_temp.jsonl"
+CTX_LEN = int(sys.argv[2].strip())
+# TEMP_FILE = "make_data_temp.jsonl"
 
 print(f"### Convert {IN_FILE} to {OUT_NAME}.bin/idx...")
 
-with open(IN_FILE, "r", encoding="utf-8") as file:
-    non_empty_lines = [line.strip() for line in file if line.strip()]
+# with open(IN_FILE, "r", encoding="utf-8") as file:
+#     non_empty_lines = [line.strip() for line in file if line.strip()]
 
-print(f"### Found {len(non_empty_lines)} non-empty lines in {IN_FILE}")
+# print(f"### Found {len(non_empty_lines)} non-empty lines in {IN_FILE}")
 
-file = open(TEMP_FILE, "w", encoding="utf-8")
-for i in range(N_EPOCH):
-    print(f"Shuffle: {i+1} out of {N_EPOCH}")
-    random.shuffle(non_empty_lines)
-    for entry in non_empty_lines:
-        file.write(entry + "\n")
-file.close()
+# file = open(TEMP_FILE, "w", encoding="utf-8")
+# for i in range(N_EPOCH):
+#     print(f"Shuffle: {i+1} out of {N_EPOCH}")
+#     random.shuffle(non_empty_lines)
+#     for entry in non_empty_lines:
+#         file.write(entry + "\n")
+# file.close()
 
 ########################################################################################################
 
 print("### Building binidx...")
 
 builder = MMapIndexedDatasetBuilder(f"{OUT_NAME}.bin")
-with fileinput.input(TEMP_FILE, encoding="utf-8") as ffff:
+with fileinput.input(IN_FILE, encoding="utf-8") as ffff:
     for line in ffff:
         x = json.loads(line)["text"]
         add_raw(x)

@@ -14,7 +14,7 @@ MODEL_TYPE="x070" # x060 => rwkv-6.0
 N_LAYER="24"
 N_EMBD="384"
 #
-CTX_LEN="1024" # !!! change magic_prime if you change ctx_len !!!
+CTX_LEN="512" # !!! change magic_prime if you change ctx_len !!!
 PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 #
 ################################################################################
@@ -25,11 +25,11 @@ PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 # Larger model => use smaller LR
 # Finetuning => use very small LR, such as 1e-5
 #
-M_BSZ="6" # takes ~9G VRAM here => reduce this to save VRAM, increase this for faster speed
+M_BSZ="192" # takes ~9G VRAM here => reduce this to save VRAM, increase this for faster speed
 LR_INIT="4e-4"
 LR_FINAL="4e-6"
 GRAD_CP=0 # 1 => slower, save VRAM; 0 => faster, more VRAM
-EPOCH_SAVE=1 # save every 10 "miniepochs" (1 miniepoch = 40320 * ctx_len tokens) => decrease if your GPU is weak
+EPOCH_SAVE=20 # save every 10 "miniepochs" (1 miniepoch = 40320 * ctx_len tokens) => decrease if your GPU is weak
 #
 ################################################################################
 #
@@ -37,15 +37,15 @@ EPOCH_SAVE=1 # save every 10 "miniepochs" (1 miniepoch = 40320 * ctx_len tokens)
 # use https://www.dcode.fr/prime-numbers-search
 #
 N_NODE=1 # number of nodes
-GPU_PER_NODE=1 # number of GPUs per node
+GPU_PER_NODE=3 # number of GPUs per node
 #
 DS_BUCKET_MB=2 # set to 2 for consumer GPUs, set to 200 for A100 / H100 (affects speed & vram usage)
 #
-# --my_exit_tokens 875602734 --magic_prime 855059 --ctx_len 1024
-MY_EXIT_TOKENS="875602734"
-MAGIC_PRIME="855059"
+# --my_exit_tokens 224188824986 --magic_prime 437868791 --ctx_len 512
+MY_EXIT_TOKENS="224188824986"
+MAGIC_PRIME="437868791"
 # DATA_FILE="data/pretrain_hq"
-DATA_FILE="data/dataset_cleaned"
+DATA_FILE="data/go_capture_simulation_output"
 DATA_TYPE="binidx"
 #
 python train.py \
@@ -80,6 +80,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 3 \
- --vocab_size 364 \
+ --vocab_size 370 \
  --warmup_steps 10 \
  --weight_decay 0.001 \

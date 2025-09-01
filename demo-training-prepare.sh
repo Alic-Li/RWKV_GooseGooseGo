@@ -17,7 +17,7 @@ MODEL_TYPE="x070" # x060 => rwkv-6.0
 N_LAYER="24"
 N_EMBD="384"
 #
-CTX_LEN="1024" # !!! change magic_prime if you change ctx_len !!!
+CTX_LEN="512" # !!! change magic_prime if you change ctx_len !!!
 PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 #
 ################################################################################
@@ -25,9 +25,9 @@ PROJ_DIR="out/L"$N_LAYER"-D"$N_EMBD"-"$MODEL_TYPE # set output folder
 # magic_prime = the largest 3n+2 prime smaller than datalen/ctxlen-1 (= 1498226207/512-1 = 2926222.06 in this case) = 2926181 in this case
 # use https://www.dcode.fr/prime-numbers-search
 #--my_exit_tokens 875602734 --magic_prime 855059 --ctx_len 1024
-MY_EXIT_TOKENS="875602734"
-MAGIC_PRIME="855059"
-DATA_FILE="data/dataset_cleaned"
+MY_EXIT_TOKENS="224188824986"
+MAGIC_PRIME="437868791"
+DATA_FILE="data/go_capture_simulation_output"
 DATA_TYPE="binidx"
 #
 python train.py \
@@ -58,6 +58,6 @@ python train.py \
  --proj_dir $PROJ_DIR \
  --strategy deepspeed_stage_2 \
  --train_stage 1 \
- --vocab_size 364 \
+ --vocab_size 370 \
  --warmup_steps 10 \
  --weight_decay 0 \
